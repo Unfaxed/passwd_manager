@@ -155,7 +155,7 @@ if __name__ == "__main__":
             else: print("%s password key(s):" % len(keys))
             for key in keys: print("- %s" % key)
         elif (args[0] == 'get'): printPw(args[1].lower(), vals, copy=True)
-        elif (args[0] == 'print'): printPw(args[1].lower(), vals, copy=False)
+        elif (args[0] == 'print' or args[0] == 'show'): printPw(args[1].lower(), vals, copy=False)
 
         elif (args[0] == 'set' or args[0] == 'put'):
             if (len(args) < 3): 
