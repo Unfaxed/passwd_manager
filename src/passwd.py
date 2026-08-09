@@ -132,10 +132,10 @@ def getSiteKey(args, vals, min_args=0, usage=None, check_exists=True):
         return None
     return key
 
-def handleCmd(vals, args, fernet, with_sysargs=False):
+def handleCmd(vals, args) -> (bool, Fernet):
     if (args[0] == '?' or args[0] == 'help'): 
         print(HELP_STR)
-        return None, None
+        return False, None
     elif (args[0] == 'list' or args[0] == 'search'):
         keys = list(vals.keys())
         if (len(args) > 1):
@@ -144,21 +144,20 @@ def handleCmd(vals, args, fernet, with_sysargs=False):
             print("%s password key(s) for search term \"%s\":" % (len(keys), search_term))
         else: print("%s password key(s):" % len(keys))
         for key in keys: print("- %s" % key)
-        return None, None
+        return False, None
     elif (args[0] == 'get'): 
         printPw(args[1].lower(), vals, copy=True)
-        return None, None
+        return False, None
     elif (args[0] == 'print' or args[0] == 'show'): 
         printPw(args[1].lower(), vals, copy=False)
-        return None, None
+        return False, None
 
     elif (args[0] == 'set' or args[0] == 'put'):
         key = getSiteKey(args, vals, usage="Usage: set <name> <new password>", min_args=3, check_exists=False)
         if (key in vals and not confirm('Are you sure you want to overwrite this password?')):
             print("Cancelled")
-            return None, None
-        pw = args[2]
-        if not with_sysargs: pw = ' '.join(args[2:]).strip() #concat all args if using built-in shell
+            return False, None
+        pw = ' '.join(args[2:]).strip()
         old_pw, comment = getPassword(key, vals)
         vals[key] = {
             'password': pw,
@@ -168,7 +167,7 @@ def handleCmd(vals, args, fernet, with_sysargs=False):
 
     elif (args[0] == 'comment'):
         key = getSiteKey(args, vals, usage="Usage: comment <name> <comment>", min_args=3)
-        if (key is None): return None, None
+        if (key is None): return False, None
         comment = ' '.join(args[2:]).strip()
         vals, old_comment = setComment(key, comment, vals)
         if (old_comment is not None): print("Old comment for %s: %s" % (key, old_comment))
@@ -176,7 +175,7 @@ def handleCmd(vals, args, fernet, with_sysargs=False):
     
     elif (args[0] == 'acomment' or args[0] == 'appendcomment' or args[0] == 'commentappend'):
         key = getSiteKey(args, vals, usage="Usage: acomment <name> <append>", min_args=3)
-        if (key is None): return None, None
+        if (key is None): return False, None
         _, existing_comment = getPassword(key, vals)
         print("existing: %s" % existing_comment)
         if (existing_comment is None): existing_comment = ''
@@ -191,35 +190,38 @@ def handleCmd(vals, args, fernet, with_sysargs=False):
         key = getSiteKey(args, vals, min_args=2, usage="Usage: del <name>")
         if (not confirm("Are you sure you want to delete %s?" % key)): 
             print("Cancelled")
-            return None, None
+            return False, None
         del vals[key]
         print("Deleted %s!" % key)
 
     elif (args[0] == 'generate' or args[0] == 'gen'):
         key = getSiteKey(args, vals, min_args=2, usage="Generate a password for a new site. Usage: generate <name>", check_exists=False)
-        if (key is None): return None, None
+        if (key is None): return False, None
         if (key in vals and not confirm("Are you sure you want to overwrite %s?" % key)):
             print("Cancelled")
-            return None, None
+            return False, None
         alphabet = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890!@#$%^&*()'
         pw = ''.join([alphabet[secrets.randbelow(len(alphabet))] for _ in range(GENERATE_LENGTH)])
-        vals[key] = pw
+        vals[key] = {
+            'password': pw,
+            'comment': None
+        }
         print("Successfully generated new password!")
         printPw(key, vals, copy=True)
     
     elif (args[0] == 'rename' or args[0] == 'move'):
         if (len(args) < 3):
             print("Usage: rename <old_name> <new_name>")
-            return None, None
+            return False, None
         oldName = args[1]
         newName = args[2]
 
         if (oldName not in vals):
             print("Unknown site name %s" % oldName)
-            return None, None
+            return False, None
         if (newName in vals):
             print("%s is already defined, delete first" % newName)
-            return None, None
+            return False, None
 
         vals[newName] = vals[oldName]
         del vals[oldName]
@@ -234,7 +236,7 @@ def handleCmd(vals, args, fernet, with_sysargs=False):
     
     elif (args[0] == 'exit' or args[0] == 'quit'): exit(0)
     else: printPw(args[0].lower(), vals, copy=True)
-    return vals, None
+    return True, None
 
 def main():
     with_sysargs = len(sys.argv) > 1
@@ -263,11 +265,9 @@ def main():
         if (len(args) == 0): continue
         args[0] = args[0].lower().replace('-', '')
 
-        updatedVals, updatedFernet = handleCmd(vals, args, fernet, with_sysargs)
-        if (updatedFernet is not None): fernet = updatedFernet
-        if (updatedVals is not None): 
-            vals = updatedVals
-            writePasswords(vals, fernet)
+        madeUpdate, newFernet = handleCmd(vals, args)
+        if (newFernet is not None): fernet = newFernet
+        if (madeUpdate): writePasswords(vals, fernet)
         print('')
 
 if __name__ == "__main__":
