@@ -15,7 +15,9 @@ set <name> <password>: Set/update the password for a site name
 get <name>: Copy a password to clipboard
 print <name>: Print a password to stdout
 comment <name> <new comment>: Set the comment for a site name
+acomment <name> <append>: Append to a comment for a site name
 list [filter]: List all site names or optionally filter by name
+rename <old_name> <new_name>: Change the name for a site
 delete <name>: Delete a password for a site name
 generate <name>: Create a new password for site
 setmainpw: Change the main password
@@ -120,11 +122,127 @@ def confirm(prompt) -> bool:
     conf = input("%s [Y/n]: " % prompt).strip().lower()
     return (conf == 'y' or conf == 'yes')
 
-if __name__ == "__main__":
-    with_sysargs = len(sys.argv) > 1
-    if (with_sysargs and sys.argv[1].lower() == '--help'): 
+def getSiteKey(args, vals, min_args=0, usage=None, check_exists=True):
+    if (len(args) < min_args): 
+        if (usage is not None): print(usage)
+        return None
+    key = args[1].strip().lower()
+    if check_exists and not (key in vals): 
+        print("Unknown site name '%s'" % key)
+        return None
+    return key
+
+def handleCmd(vals, args, fernet, with_sysargs=False):
+    if (args[0] == '?' or args[0] == 'help'): 
         print(HELP_STR)
-        quit()
+        return None, None
+    elif (args[0] == 'list' or args[0] == 'search'):
+        keys = list(vals.keys())
+        if (len(args) > 1):
+            search_term = args[1].strip().lower()
+            keys = list(filter(lambda i: search_term in i.lower(), keys))
+            print("%s password key(s) for search term \"%s\":" % (len(keys), search_term))
+        else: print("%s password key(s):" % len(keys))
+        for key in keys: print("- %s" % key)
+        return None, None
+    elif (args[0] == 'get'): 
+        printPw(args[1].lower(), vals, copy=True)
+        return None, None
+    elif (args[0] == 'print' or args[0] == 'show'): 
+        printPw(args[1].lower(), vals, copy=False)
+        return None, None
+
+    elif (args[0] == 'set' or args[0] == 'put'):
+        key = getSiteKey(args, vals, usage="Usage: set <name> <new password>", min_args=3, check_exists=False)
+        if (key in vals and not confirm('Are you sure you want to overwrite this password?')):
+            print("Cancelled")
+            return None, None
+        pw = args[2]
+        if not with_sysargs: pw = ' '.join(args[2:]).strip() #concat all args if using built-in shell
+        old_pw, comment = getPassword(key, vals)
+        vals[key] = {
+            'password': pw,
+            'comment': comment
+        }
+        print("Successfully set password for %s!" % key)
+
+    elif (args[0] == 'comment'):
+        key = getSiteKey(args, vals, usage="Usage: comment <name> <comment>", min_args=3)
+        if (key is None): return None, None
+        comment = ' '.join(args[2:]).strip()
+        vals, old_comment = setComment(key, comment, vals)
+        if (old_comment is not None): print("Old comment for %s: %s" % (key, old_comment))
+        print("New comment for %s: %s" % (key, comment))
+    
+    elif (args[0] == 'acomment' or args[0] == 'appendcomment' or args[0] == 'commentappend'):
+        key = getSiteKey(args, vals, usage="Usage: acomment <name> <append>", min_args=3)
+        if (key is None): return None, None
+        _, existing_comment = getPassword(key, vals)
+        print("existing: %s" % existing_comment)
+        if (existing_comment is None): existing_comment = ''
+        comment_append = ' '.join(args[2:]).strip()
+        if (len(existing_comment) > 0): comment_append = ' ' + comment_append
+        new_comment = existing_comment + comment_append
+        vals, old_comment = setComment(key, new_comment, vals)
+        if (old_comment is not None): print("Old comment for %s: %s" % (key, old_comment))
+        print("New comment for %s: %s" % (key, new_comment))
+
+    elif (args[0] == 'delete' or args[0] == 'del'):
+        key = getSiteKey(args, vals, min_args=2, usage="Usage: del <name>")
+        if (not confirm("Are you sure you want to delete %s?" % key)): 
+            print("Cancelled")
+            return None, None
+        del vals[key]
+        print("Deleted %s!" % key)
+
+    elif (args[0] == 'generate' or args[0] == 'gen'):
+        key = getSiteKey(args, vals, min_args=2, usage="Generate a password for a new site. Usage: generate <name>", check_exists=False)
+        if (key is None): return None, None
+        if (key in vals and not confirm("Are you sure you want to overwrite %s?" % key)):
+            print("Cancelled")
+            return None, None
+        alphabet = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890!@#$%^&*()'
+        pw = ''.join([alphabet[secrets.randbelow(len(alphabet))] for _ in range(GENERATE_LENGTH)])
+        vals[key] = pw
+        print("Successfully generated new password!")
+        printPw(key, vals, copy=True)
+    
+    elif (args[0] == 'rename' or args[0] == 'move'):
+        if (len(args) < 3):
+            print("Usage: rename <old_name> <new_name>")
+            return None, None
+        oldName = args[1]
+        newName = args[2]
+
+        if (oldName not in vals):
+            print("Unknown site name %s" % oldName)
+            return None, None
+        if (newName in vals):
+            print("%s is already defined, delete first" % newName)
+            return None, None
+
+        vals[newName] = vals[oldName]
+        del vals[oldName]
+
+    elif (args[0] == 'setmainpw' or args[0] == 'mainpw' or args[0] == 'passwd'):
+        pw = newPw()
+        os.remove(PWSTORE_DIR + "/salt")
+        salt = readSalt()
+        fernet = getFernet(salt, pw)
+        print("Password updated!")
+        return vals, fernet
+    
+    elif (args[0] == 'exit' or args[0] == 'quit'): exit(0)
+    else: printPw(args[0].lower(), vals, copy=True)
+    return vals, None
+
+def main():
+    with_sysargs = len(sys.argv) > 1
+    if (with_sysargs):
+        firstArg = sys.argv[1].lower()
+        if (firstArg == '--help' or firstArg == '-h'):
+            print(HELP_STR)
+            exit(0)
 
     salt = readSalt()
     vals = {}
@@ -145,89 +263,12 @@ if __name__ == "__main__":
         if (len(args) == 0): continue
         args[0] = args[0].lower().replace('-', '')
 
-        if (args[0] == '?' or args[0] == 'help'): print(HELP_STR)
-        elif (args[0] == 'list' or args[0] == 'search'):
-            keys = list(vals.keys())
-            if (len(args) > 1):
-                search_term = args[1].strip().lower()
-                keys = list(filter(lambda i: search_term in i.lower(), keys))
-                print("%s password key(s) for search term \"%s\":" % (len(keys), search_term))
-            else: print("%s password key(s):" % len(keys))
-            for key in keys: print("- %s" % key)
-        elif (args[0] == 'get'): printPw(args[1].lower(), vals, copy=True)
-        elif (args[0] == 'print' or args[0] == 'show'): printPw(args[1].lower(), vals, copy=False)
-
-        elif (args[0] == 'set' or args[0] == 'put'):
-            if (len(args) < 3): 
-                print("Usage: set <name> <new password>")
-                continue
-            key = args[1].lower()
-            if (key in vals and not confirm('Are you sure you want to overwrite this password?')):
-                print("Cancelled")
-                continue
-            pw = args[2]
-            if not with_sysargs: pw = ' '.join(args[2:]).strip() #concat all args if using built-in shell
-            old_pw, comment = getPassword(key, vals)
-            vals[key] = {
-                'password': pw,
-                'comment': comment
-            }
+        updatedVals, updatedFernet = handleCmd(vals, args, fernet, with_sysargs)
+        if (updatedFernet is not None): fernet = updatedFernet
+        if (updatedVals is not None): 
+            vals = updatedVals
             writePasswords(vals, fernet)
-            print("Successfully set password for %s!" % key)
-
-        elif (args[0] == 'comment'):
-            if (len(args) < 3): 
-                print("Usage: comment <name> <comment>")
-                continue
-            key = args[1].lower()
-            if not (key in vals): 
-                print("Unknown site name '%s'" % key)
-                continue
-            comment = args[2]
-            if (not with_sysargs): comment = ' '.join(args[2:]).strip()
-            vals, old_comment = setComment(key, comment, vals)
-            writePasswords(vals, fernet)
-            if (old_comment is not None): print("Old comment for %s: %s" % (key, old_comment))
-            print("New comment for %s: %s" % (key, comment))
-
-        elif (args[0] == 'delete' or args[0] == 'del'):
-            if (len(args) < 2): 
-                print("Usage: del <name>")
-                continue
-            key = args[1].lower()
-            if (not key in vals):
-                print("Unknown site '%s'" % key)
-                continue
-            if (not confirm("Are you sure you want to delete %s?" % key)): 
-                print("Cancelled")
-                continue
-            del vals[key]
-            writePasswords(vals, fernet)
-            print("Deleted %s!" % key)
-
-        elif (args[0] == 'generate' or args[0] == 'gen'):
-            if (len(args) < 2):
-                print("Generate a password for a new site. Usage: generate <name>")
-                continue
-            key = args[1].lower()
-            if (key in vals and not confirm("Are you sure you want to overwrite %s?" % key)): 
-                print("Cancelled")
-                continue
-            alphabet = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ1234567890!@#$%^&*()'
-            pw = ''.join([alphabet[secrets.randbelow(len(alphabet))] for _ in range(GENERATE_LENGTH)])
-            vals[key] = pw
-            writePasswords(vals, fernet)
-            print("Successfully generated new password!")
-            printPw(key, vals, copy=True)
-
-        elif (args[0] == 'setmainpw' or args[0] == 'passwd'):
-            pw = newPw()
-            os.remove(PWSTORE_DIR + "/salt")
-            salt = readSalt()
-            fernet = getFernet(salt, pw)
-            writePasswords(vals, fernet)
-            print("Password updated!")
-        
-        elif (args[0] == 'exit' or args[0] == 'quit'): break
-        else: printPw(args[0].lower(), vals, copy=True)
         print('')
+
+if __name__ == "__main__":
+    main()
