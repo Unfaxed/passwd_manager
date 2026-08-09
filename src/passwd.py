@@ -136,7 +136,7 @@ def handleCmd(vals, args) -> (bool, Fernet):
     if (args[0] == '?' or args[0] == 'help'): 
         print(HELP_STR)
         return False, None
-    elif (args[0] == 'list' or args[0] == 'search'):
+    elif (args[0] == 'list' or args[0] == 'search' or args[0] == 'ls'):
         keys = list(vals.keys())
         if (len(args) > 1):
             search_term = args[1].strip().lower()
@@ -209,7 +209,7 @@ def handleCmd(vals, args) -> (bool, Fernet):
         print("Successfully generated new password!")
         printPw(key, vals, copy=True)
     
-    elif (args[0] == 'rename' or args[0] == 'move'):
+    elif (args[0] == 'rename' or args[0] == 'move' or args[0] == 'mv'):
         if (len(args) < 3):
             print("Usage: rename <old_name> <new_name>")
             return False, None
@@ -225,6 +225,7 @@ def handleCmd(vals, args) -> (bool, Fernet):
 
         vals[newName] = vals[oldName]
         del vals[oldName]
+        print("Renamed %s to %s" % (oldName, newName))
 
     elif (args[0] == 'setmainpw' or args[0] == 'mainpw' or args[0] == 'passwd'):
         pw = newPw()
