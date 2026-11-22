@@ -8,7 +8,7 @@ import os
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../src')))
 
-from passwd import handleCmd
+from passwd import handleCmd, getSiteKey
 
 class CmdValsUpdateTest(unittest.TestCase):
 
@@ -105,6 +105,19 @@ class CmdValsUpdateTest(unittest.TestCase):
         self.assertEqual(vals['site1']['password'], 'new site 1 Pw %s' % self.specialChars)
         self.assertEqual(vals['site1']['comment'], None)
 
+    def test_set_empty(self):
+        """Check that a password cannot be set to an empty string"""
+        vals = self.dummyValues()
+        args = ['set', 'site3']
+        output = StringIO()
+
+        updatedVals, fernet = handleCmd(vals, args)
+
+        assert updatedVals == False
+        assert fernet is None
+        assert None not in vals
+        assert 'site3' not in vals
+
     def test_set_existing_legacy(self):
         vals = self.dummyValues()
         args = ['set', 'legacy_site', 'new', 'pw', self.specialChars]
@@ -166,6 +179,16 @@ class CmdValsUpdateTest(unittest.TestCase):
         self.assertEqual(vals['site2']['comment'], 'comment site 2 %s Appended Comment %s' % (self.specialChars, self.specialChars))
         self.assertEqual(vals['site2']['password'], site2pw)
     
+    def test_get_sitekey_usage_str(self):
+        args = ['a', 'b']
+        usageStr = "usage string"
+        fake_output = StringIO()
+        key = 1
+        with redirect_stdout(fake_output):
+            key = getSiteKey(args, self.dummyValues(), min_args=3, usage=usageStr)
+        assert key is None
+        assert fake_output.getvalue().strip() == usageStr
+
     def test_rename(self):
         vals = self.dummyValues()
         args = ['rename', 'site2', 'another_site']
@@ -195,6 +218,14 @@ class CmdValsUpdateTest(unittest.TestCase):
         self.assertTrue(updatedVals)
         self.assertIn('[Y/n]', fake_output.getvalue())
         self.assertNotIn('site1', vals)
+
+    def test_empty_cmds(self):
+        cmds_to_test = ['delete', 'comment', 'acomment', 'generate']
+        for cmd in cmds_to_test:
+            args = [cmd]
+            updatedVals, fernet = handleCmd(self.dummyValues(), args)
+            assert updatedVals == False
+            assert fernet is None
     
     def test_generate(self):
         vals = self.dummyValues()

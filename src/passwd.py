@@ -145,7 +145,7 @@ def handleCmd(vals, args) -> (bool, Fernet):
         else: print("%s password key(s):" % len(keys))
         for key in keys: print("- %s" % key)
         return False, None
-    elif (args[0] == 'get'): 
+    elif (args[0] == 'get'):
         printPw(args[1].lower(), vals, copy=True)
         return False, None
     elif (args[0] == 'print' or args[0] == 'show'): 
@@ -154,6 +154,7 @@ def handleCmd(vals, args) -> (bool, Fernet):
 
     elif (args[0] == 'set' or args[0] == 'put'):
         key = getSiteKey(args, vals, usage="Usage: set <name> <new password>", min_args=3, check_exists=False)
+        if key is None: return False, None
         if (key in vals and not confirm('Are you sure you want to overwrite this password?')):
             print("Cancelled")
             return False, None
@@ -188,6 +189,7 @@ def handleCmd(vals, args) -> (bool, Fernet):
 
     elif (args[0] == 'delete' or args[0] == 'del'):
         key = getSiteKey(args, vals, min_args=2, usage="Usage: del <name>")
+        if key is None: return False, None
         if (not confirm("Are you sure you want to delete %s?" % key)): 
             print("Cancelled")
             return False, None
