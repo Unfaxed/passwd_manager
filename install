@@ -1,0 +1,33 @@
+#!/bin/bash
+
+# Run this script from the repo's root directory to install or update the pw command
+
+set -e
+
+INSTALL_DIR="$HOME/.local/bin" # Needs to be part of $PATH
+FILE_SRC="src/passwd.py"
+CONFIGS_DIR=$HOME/.config/pwstore
+
+if [[ "$PATH" != *"$INSTALL_DIR"* ]]; then
+    echo "Installation directory, $INSTALL_DIR, is not part of PATH"
+    exit 1
+fi
+
+if [ ! -d $INSTALL_DIR ]; then
+    echo "Installation directory does not exist"
+    exit 1
+fi
+
+if [ ! -f $FILE_SRC ]; then
+    echo "Must run this script in the same directory as passwd.py"
+    exit 1
+fi
+
+mkdir -p $CONFIGS_DIR
+sed "s|PWSTORE_DIR = \".\"|PWSTORE_DIR = \"$CONFIGS_DIR\"|g" $FILE_SRC > /tmp/passwd.py
+
+sudo cp /tmp/passwd.py $INSTALL_DIR
+cd $INSTALL_DIR
+sudo mv passwd.py pw
+sudo chown root:root pw
+sudo chmod 775 pw
